@@ -6,3 +6,6 @@ Temp/
 *.csproj
 *.sln
 *.apk
+*.bak
+*.bak.meta
+*.tmp

@@ -1,111 +1,110 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-
-public enum CameraPosType
-{
-    Center,
-    UpperLeft,
-    UpperCenter,
-    UpperRight,
-    CenterLeft,
-    CenterRight,
-    BottomLeft,
-    BottomCenter,
-    BottomRight
-}
+using UnityEngine.UI;
 
 // [ExecuteInEditMode]
 public class CameraController : MonoBehaviour
 {
-    public Transform cameraTrans;
-    public Transform cameraTarget;
-    [SerializeField]
-    private float smooth = 10f;
-    [SerializeField]
-    private float scale = 0.01f;
+    [Tooltip("Camera rotate around and look at target")]
+    public Transform target;
+    [Tooltip("Smaller positive value means smoother rotation")]
+    public float slerpSmoothValue = 100f;
 
-    private bool enableGyro;
-    private Vector3 originGyroAngles;
+    public Text text;
 
-    private List<Transform> cameraTransList;
-    private Dictionary<CameraPosType, Transform> cameraPosMap;
-    private int cameraIndex;
+    [SerializeField]
+    private Vector3 value;
+    private Vector3 lastValue;
+    private bool useGyro;
+    private Vector3 originGyroValue;
+
+    private Quaternion currentRot; // store the quaternion after the slerp operation
+    private Quaternion targetRot;
+
+    private Vector3 dir;
+
+    private Vector2 touchStartPos;
 
     // Start is called before the first frame update
     void Start()
     {
-        cameraTransList = new List<Transform>();
-        cameraPosMap = new Dictionary<CameraPosType, Transform>();
-
-        int posIndex = 0;
-        foreach (Transform child in transform)
-        {
-            cameraTransList.Add(child);
-            cameraPosMap.Add((CameraPosType)posIndex++, child);
-        }
+        dir = new Vector3(0, 0, -Vector3.Distance(transform.position, target.position));
         Input.gyro.enabled = true;
     }
 
     // Update is called once per frame
     void Update()
     {
-        LookAtTarget();
-        if(enableGyro)
+        if (useGyro)
         {
-            UpdateGyro();
+            UpdateWithGyro();
         }
-    }
-
-    private void LookAtTarget()
-    {
-        cameraTrans.LookAt(cameraTarget);
-    }
-
-    private void UpdateGyro()
-    {
-        Debug.Log("Current Angles: " + Input.gyro.attitude.eulerAngles);
-        Debug.Log("Origin Angles: " + originGyroAngles);
-        Vector3 angles = ClampDegree(Input.gyro.attitude.eulerAngles) - ClampDegree(originGyroAngles);
-        angles.z = 0f;
-        Debug.Log("Angles: " + angles);
-        cameraTrans.position = Vector3.Lerp(cameraTrans.position, angles * scale, Time.deltaTime * smooth);
-    }
-
-    //防止角度从0°->360°跳变
-    private Vector3 ClampDegree(Vector3 angles)
-    {
-        if(angles.x > 180f)
+        else
         {
-            angles.x = angles.x - 360f;
+            UpdateWithTouch();
         }
-        if(angles.y > 180f)
-        {
-            angles.y = angles.y - 360f;
-        }
-        return angles;
-    }
-
-    //在打开陀螺仪的一瞬间是获取不到值的，所以得预先打开
-    public void EnableGyro(bool enable)
-    {
-        if(enable)
-        {
-            // Input.gyro.enabled = true;
-            originGyroAngles = Input.gyro.attitude.eulerAngles;
-            cameraTrans.position = Vector3.zero;
-            Debug.Log("Gyro Enabled");
-        }
+        //LookAt一定要放下面，否则会出现抖动
+        // if(value.y < 90 && value.y > -90 || value.y > 270 || value.y < -270)
+        // {
+            transform.LookAt(target, Vector3.up);
+        // }
         // else
         // {
-        //     Input.gyro.enabled = false;
+        //     transform.LookAt(target, Vector3.down);
         // }
-        enableGyro = enable;
     }
 
-    public void SwitchCamera(int posType)
+    private void UpdateWithGyro()
     {
-        cameraTrans.position = cameraPosMap[(CameraPosType)posType].position;
-        // cameraTrans.rotation = cameraPosMap[(CameraPosType)posType].rotation;
+        value = (Input.gyro.gravity - originGyroValue) * 90;
+        RotateAround();
+    }
+
+    private void UpdateWithTouch()
+    {
+        if (Input.touchCount > 0)
+        {
+            Touch touch = Input.GetTouch(0);
+
+            switch (touch.phase)
+            {
+                case TouchPhase.Began:
+                    touchStartPos = touch.position;
+                    break;
+                case TouchPhase.Moved:
+                    value = (touch.position - touchStartPos) * 0.1f;
+                    value = value + lastValue;
+                    break;
+                case TouchPhase.Ended:
+                    lastValue= value;
+                    break;
+            }
+        }
+        RotateAround();
+    }
+
+    private void RotateAround()
+    {
+        // value.x = value.x % 360;
+        // value.y = value.y % 360;
+        value.x = Mathf.Clamp(value.x, -60, 60);
+        value.y = Mathf.Clamp(value.y, -60, 60);
+        Debug.Log(value);
+        text.text = value.ToString();
+        targetRot = Quaternion.Euler(-value.y, value.x, 0);
+        currentRot = Quaternion.Slerp(currentRot, targetRot, Time.smoothDeltaTime * slerpSmoothValue);
+        transform.position = target.position + currentRot * dir;
+    }
+
+    public void UseGyro(bool status)
+    {
+        if (status)
+        {
+            originGyroValue = Input.gyro.gravity;
+            Debug.Log("Gyro Enabled");
+        }
+        value = Vector3.zero;
+        useGyro = status;
     }
 }
